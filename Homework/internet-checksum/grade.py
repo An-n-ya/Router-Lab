@@ -41,7 +41,7 @@ if __name__ == '__main__':
 
     grade = 0
 
-    total = 1
+    total = 4
     for i in range(1, total+1):
         in_file = "data/{}_input{}.pcap".format(prefix, i)
         out_file = "data/{}_output{}.txt".format(prefix, i)

@@ -43,7 +43,7 @@ void message_sum(uint16_t *data, size_t len, uint32_t &sum) {
     }
 }
 
-bool validate_checksum(uint32_t sum, uint16_t &checksum) {
+bool validate_checksum(uint32_t sum, uint16_t &checksum, bool is_icmp) {
     uint32_t sum_without_check = sum;
     sum += ntohs(checksum);
     while (sum_without_check > 0xffff) {
@@ -54,7 +54,29 @@ bool validate_checksum(uint32_t sum, uint16_t &checksum) {
     while (sum > 0xffff) {
         sum = (sum & 0xffff) + ((sum & 0xffff0000) >> 16);
     }
-    /*printf("sum: 0x%x, check: 0x%x\n", sum, check_sum);*/
+    if (is_icmp) {
+        if (check_sum == 0xffff && checksum == 0) {
+            checksum = 0;
+            return true;
+        }
+    } else {
+        if (check_sum == 0 && checksum == 0xffff) {
+            checksum = 0xffff;
+            return true;
+        }
+        if (checksum == 0) {
+            if (check_sum == 0) {
+                checksum = htons(0xffff);
+            } else {
+                checksum = htons(check_sum);
+            }
+            return false;
+        }
+    }
+    bool res = false;
+    if (check_sum == checksum) {
+        res = true;
+    }
     checksum = htons(check_sum);
     if (sum != 0xffff) {
         return false;
@@ -83,7 +105,7 @@ bool validateAndFillChecksum(uint8_t *packet, size_t len) {
 
         message_sum(data, data_len, sum);
 
-        return validate_checksum(sum, udp->check);
+        return validate_checksum(sum, udp->check, false);
     } else if (nxt_header == IPPROTO_ICMPV6) {
         // ICMPv6
         struct icmp6_hdr *icmp = (struct icmp6_hdr *)&packet[sizeof(struct ip6_hdr)];
@@ -95,7 +117,7 @@ bool validateAndFillChecksum(uint8_t *packet, size_t len) {
         uint16_t *data = (uint16_t *)&packet[sizeof(struct ip6_hdr) + 4];
         message_sum(data, message_len, sum);
 
-        return validate_checksum(sum, icmp->icmp6_cksum);
+        return validate_checksum(sum, icmp->icmp6_cksum, true);
     } else {
         assert(false);
     }
