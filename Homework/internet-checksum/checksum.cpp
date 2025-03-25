@@ -28,6 +28,9 @@ void ip6_header_sum(uint8_t *packet, uint32_t &sum) {
 }
 
 void message_sum(uint16_t *data, size_t len, uint32_t &sum) {
+    if (len == 0) {
+        return;
+    }
     int ind = 0;
     for (; ind * 2 < len - 1; ind += 1) {
         /*printf("data i:%d 0x%x -> 0x%x\n", ind, data[ind], ntohs(data[ind]));*/
