@@ -10,36 +10,19 @@
 void ip6_header_sum(uint8_t *packet, uint32_t &sum) {
     struct ip6_hdr *ip6 = (struct ip6_hdr *)packet;
     for (int i = 0; i < 8; i++) {
-        uint32_t n = ntohs(ip6->ip6_src.s6_addr16[i]);
-        /*printf("src n %d: 0x%x -> 0x%x\n", i, ip6->ip6_src.s6_addr16[i], n);*/
-        sum += n;
+        sum += ntohs(ip6->ip6_src.s6_addr16[i]);
+        sum += ntohs(ip6->ip6_dst.s6_addr16[i]);
     }
-    for (int i = 0; i < 8; i++) {
-        uint32_t n = ntohs(ip6->ip6_dst.s6_addr16[i]);
-        /*printf("dst n %d: 0x%x -> 0x%x\n", i, ip6->ip6_src.s6_addr16[i], n);*/
-        sum += n;
-    }
-    uint32_t length = ntohs(ip6->ip6_plen);
-    /*printf("len: 0x%x -> 0x%x\n", ip6->ip6_plen, length);*/
-    sum += length;
-    uint32_t nxt = ip6->ip6_nxt;
-    /*printf("nxt: 0x%x -> 0x%x\n", ip6->ip6_nxt, nxt);*/
-    sum += nxt;
+    sum += ntohs(ip6->ip6_plen);
+    sum += ip6->ip6_nxt;
 }
 
-void message_sum(uint16_t *data, size_t len, uint32_t &sum) {
-    if (len == 0) {
-        return;
-    }
-    int ind = 0;
-    for (; ind * 2 < len - 1; ind += 1) {
-        /*printf("data i:%d 0x%x -> 0x%x\n", ind, data[ind], ntohs(data[ind]));*/
+void message_sum(const uint16_t *data, size_t len, uint32_t &sum) {
+    for (size_t ind = 0; ind * 2 + 1 < len; ind += 1) {
         sum += ntohs(data[ind]);
     }
-    if (len % 2 == 1) {
-        uint16_t tmp = data[ind] & 0xff;
-        /*printf("data i:%d 0x%x -> 0x%x\n", ind, tmp, ntohs(tmp));*/
-        sum += ntohs(tmp);
+    if (len % 2 == 1) { // 处理剩余的一个字节
+        sum += ntohs(data[len / 2] & 0xff);
     }
 }
 
@@ -47,37 +30,33 @@ bool validate_checksum(uint32_t sum, uint16_t &checksum, bool is_icmp) {
     uint32_t sum_without_check = sum;
     sum += ntohs(checksum);
     while (sum_without_check > 0xffff) {
-        sum_without_check = (sum_without_check & 0xffff) + ((sum_without_check & 0xffff0000) >> 16);
+        sum_without_check = (sum_without_check & 0xffff) + (sum_without_check >> 16);
     }
-    uint16_t check_sum = (uint16_t)sum_without_check;
-    check_sum = ~check_sum;
+    uint16_t computed_checksum = (uint16_t)sum_without_check;
+    computed_checksum = ~computed_checksum;
     while (sum > 0xffff) {
-        sum = (sum & 0xffff) + ((sum & 0xffff0000) >> 16);
+        sum = (sum & 0xffff) + (sum >> 16);
     }
     if (is_icmp) {
-        if (check_sum == 0xffff && checksum == 0) {
+        if (computed_checksum == 0xffff && checksum == 0) {
             checksum = 0;
             return true;
         }
     } else {
-        if (check_sum == 0 && checksum == 0xffff) {
+        if (computed_checksum == 0 && checksum == 0xffff) {
             checksum = 0xffff;
             return true;
         }
         if (checksum == 0) {
-            if (check_sum == 0) {
+            if (computed_checksum == 0) {
                 checksum = htons(0xffff);
             } else {
-                checksum = htons(check_sum);
+                checksum = htons(computed_checksum);
             }
             return false;
         }
     }
-    bool res = false;
-    if (check_sum == checksum) {
-        res = true;
-    }
-    checksum = htons(check_sum);
+    checksum = htons(computed_checksum);
     if (sum != 0xffff) {
         return false;
     } else {
